@@ -1,0 +1,43 @@
+import tensorflow as tf
+import numpy as np
+import matplotlib.pyplot as plt
+from tensorflow.keras.applications import VGG16
+from tensorflow.keras.layers import Flatten, Dense, Dropout
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.datasets import mnist
+from tensorflow.keras.optimizers import Adam
+from tensorflow.image import resize
+
+# Load and preprocess the MNIST dataset
+(x_train, y_train), (x_test, y_test) = mnist.load_data()
+x_train, x_test = np.stack((x_train,) * 3, axis=-1), np.stack((x_test,) * 3, axis=-1)  # Convert to 3 channels
+x_train, x_test = resize(x_train / 255.0, (32, 32)), resize(x_test / 255.0, (32, 32))
+
+# Load pre-trained VGG16 model and freeze its layers
+vgg_model = VGG16(weights='imagenet', include_top=False, input_shape=(32, 32, 3))
+for layer in vgg_model.layers:
+    layer.trainable = False
+
+# Add a custom classifier on top of the base model
+custom_classifier = Sequential([
+    Flatten(),
+    Dense(128, activation="relu"),
+    Dropout(0.4),
+    Dense(64, activation='relu'),
+    Dropout(0.4),
+    Dense(10, activation='softmax')
+])
+
+# Combine the base model and classifier
+model = Sequential([vgg_model, custom_classifier])
+
+# Compile and train the model on the custom classifier layers
+model.compile(optimizer=Adam(learning_rate=0.001), loss='sparse_categorical_crossentropy', metrics=['accuracy'])
+model.fit(x_train, y_train, epochs=5, batch_size=256, validation_data=(x_test, y_test))
+
+# Fine-tune: unfreeze the last few layers of the base model and recompile
+for layer in vgg_model.layers[-4:]:
+    layer.trainable = True
+
+model.compile(optimizer=Adam(learning_rate=0.0001), loss='sparse_categorical_crossentropy', metrics=['accuracy'])
+model.fit(x_train, y_train, epochs=5, batch_size=256, validation_data=(x_test, y_test))
